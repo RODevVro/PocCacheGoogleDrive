@@ -39,7 +39,7 @@ namespace GoogleAPI
             var ret = DriveDownloadFile(driveService, Constantes._FILE_ID);
 
             using var package = new ExcelPackage(ret.Result);
-            Console.WriteLine($"[{time.ToString(@"m\:ss")}] CellValue: {package.Workbook.Worksheets[0].Cells[2, 1].Value}");
+            Console.WriteLine($"[{time:m\\:ss}] CellValue: {package.Workbook.Worksheets[0].Cells[2, 1].Value}");
         }
 
         #region GoogleDrive
