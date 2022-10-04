@@ -1,10 +1,12 @@
 ﻿using Google.Apis.Auth.OAuth2;
-using Google.Apis.Download;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using OfficeOpenXml;
 using System.Diagnostics;
+using Google.Apis.Sheets.v4;
+using Newtonsoft.Json;
+using Google.Apis.Sheets.v4.Data;
 
 namespace GoogleAPI
 {
@@ -14,7 +16,8 @@ namespace GoogleAPI
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
-            var driveService = CreateDriveService();
+            //var driveService = CreateDriveService();
+            var sheetService = CreateSheetService();
 
             var timer = new Stopwatch();
             
@@ -24,7 +27,9 @@ namespace GoogleAPI
 
                 do
                 {
-                    DownloadAndWrite(driveService, timer.Elapsed);
+                    //DownloadAndWrite(driveService, timer.Elapsed);
+                    await SheetReadFileAndWrite(sheetService, timer.Elapsed);
+                    
                     await Task.Delay(5000);
                 } while (timer.Elapsed.TotalMilliseconds < 5 * 60 * 1000);
             });
@@ -34,23 +39,23 @@ namespace GoogleAPI
             Console.ReadKey();
         }
 
-        private static void DownloadAndWrite(DriveService driveService, TimeSpan time)
+        private static async Task DownloadAndWrite(DriveService driveService, TimeSpan time)
         {
-            var ret = DriveDownloadFile(driveService, Constantes._FILE_ID);
+            var ret = await DriveDownloadFile(driveService, Constantes._FILE_ID_SHEET);
 
-            using var package = new ExcelPackage(ret.Result);
+            using var package = new ExcelPackage(ret);
             Console.WriteLine($"[{time:m\\:ss}] CellValue: {package.Workbook.Worksheets[0].Cells[2, 1].Value}");
         }
 
-        #region GoogleDrive
+        #region Google Drive Excel
 
         private static DriveService CreateDriveService()
         {
-            var credential = GoogleWebAuthorizationBroker.AuthorizeAsync(new ClientSecrets
-            {
-                ClientId = Constantes._CLIENT_ID,
-                ClientSecret = Constantes._CLIENT_SECRET
-            },
+            var credential = GoogleWebAuthorizationBroker.AuthorizeAsync(new ClientSecrets 
+                { 
+                    ClientId = Constantes._CLIENT_ID, 
+                    ClientSecret = Constantes._CLIENT_SECRET
+                },
                 new[] { DriveService.Scope.Drive, DriveService.Scope.DriveFile },
                 "user",
                 CancellationToken.None,
@@ -67,6 +72,7 @@ namespace GoogleAPI
         {
             try
             {
+                //var request = driveService.Files.Export(fileId, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); //Not working
                 var request = driveService.Files.Get(fileId);
                 var stream = new MemoryStream();
 
@@ -97,6 +103,48 @@ namespace GoogleAPI
             }
 
             return null;
+        }
+
+        #endregion
+
+        #region Google Drive Sheet
+
+        private static SheetsService CreateSheetService()
+        {
+            var credential = GoogleWebAuthorizationBroker.AuthorizeAsync(new ClientSecrets
+                {
+                    ClientId = Constantes._CLIENT_ID,
+                    ClientSecret = Constantes._CLIENT_SECRET
+                }, 
+                new[] { SheetsService.Scope.SpreadsheetsReadonly },
+                "user",
+                CancellationToken.None, 
+                new FileDataStore("Drive.Auth.Store")).Result;
+
+            return new SheetsService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "Spreadsheet Service account Authentication Sample",
+            });
+        }
+
+        private static async Task<Spreadsheet> SheetReadFile(SheetsService sheetService, string fileId)
+        {
+            var range = "Sheet1!A2";
+
+            var request = sheetService.Spreadsheets.Get(fileId);
+            request.Ranges = range;
+            request.IncludeGridData = true;
+
+            return await request.ExecuteAsync();
+
+        }
+
+        private static async Task SheetReadFileAndWrite(SheetsService sheetService, TimeSpan time)
+        {
+            var ret = await SheetReadFile(sheetService, Constantes._FILE_ID_SHEET);
+
+            Console.WriteLine($"[{time:m\\:ss}] CellValue: {JsonConvert.SerializeObject(ret.Sheets[0].Data[0].RowData[0].Values[0].EffectiveValue.NumberValue )}");
         }
 
         #endregion
